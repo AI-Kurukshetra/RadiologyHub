@@ -5,6 +5,40 @@ import { Badge } from '@/components/ui/badge'
 
 export default async function StudyDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
+  type StudySeries = {
+    id: string
+    series_number?: number | null
+    series_description?: string | null
+    modality?: string | null
+    num_images?: number | null
+  }
+
+  type StudyDetail = {
+    id: string
+    accession_number?: string | null
+    modality?: string | null
+    body_part?: string | null
+    study_description?: string | null
+    study_date?: string | null
+    referring_physician?: string | null
+    status?: string | null
+    priority?: string | null
+    num_series?: number | null
+    num_images?: number | null
+    patients?: {
+      full_name?: string | null
+      mrn?: string | null
+      date_of_birth?: string | null
+      gender?: string | null
+    } | null
+    series?: StudySeries[] | null
+  }
+  type ReportSummary = {
+    id?: string
+    status?: string | null
+    signed_at?: string | null
+    hl7_sent?: boolean | null
+  }
 
   const { data: study } = await supabase
     .from('studies')
@@ -38,13 +72,14 @@ export default async function StudyDetailPage({ params }: { params: { id: string
     .single()
 
   if (!study) notFound()
-  const s = study as any
+  const s = study as StudyDetail
 
   const { data: report } = await supabase
     .from('reports')
     .select('id, status, signed_at, hl7_sent')
     .eq('study_id', params.id)
     .maybeSingle()
+  const reportSummary = report as ReportSummary | null
 
   return (
     <div className="space-y-6 p-6">
@@ -138,7 +173,7 @@ export default async function StudyDetailPage({ params }: { params: { id: string
           <span className="text-sm text-slate-500">{s.series?.length ?? 0} total</span>
         </div>
         <div className="space-y-2">
-          {(s.series ?? []).map((seriesItem: any) => (
+          {(s.series ?? []).map((seriesItem: StudySeries) => (
             <div
               key={seriesItem.id}
               className="flex items-center justify-between rounded-lg border border-slate-200 p-3"
@@ -160,13 +195,13 @@ export default async function StudyDetailPage({ params }: { params: { id: string
 
       <section className="rounded-xl border bg-white p-5">
         <h2 className="mb-3 text-base font-semibold text-slate-800">Report</h2>
-        {report ? (
+        {reportSummary ? (
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <Badge>{(report as any).status ?? 'draft'}</Badge>
+            <Badge>{reportSummary.status ?? 'draft'}</Badge>
             <span className="text-slate-500">
-              Signed: {(report as any).signed_at ? new Date((report as any).signed_at).toLocaleString() : 'Not signed'}
+              Signed: {reportSummary.signed_at ? new Date(reportSummary.signed_at).toLocaleString() : 'Not signed'}
             </span>
-            <span className="text-slate-500">HL7: {(report as any).hl7_sent ? 'Sent' : 'Pending'}</span>
+            <span className="text-slate-500">HL7: {reportSummary.hl7_sent ? 'Sent' : 'Pending'}</span>
             <Link
               href={`/studies/${s.id}/report`}
               className="ml-auto rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-900"

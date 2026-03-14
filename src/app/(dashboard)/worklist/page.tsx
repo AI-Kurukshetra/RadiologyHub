@@ -12,7 +12,21 @@ const PRIORITY_CLASS = {
 
 export default function WorklistPage() {
   const supabase = createClient()
-  const [items, setItems] = useState<any[]>([])
+  type WorklistItem = {
+    id: string
+    priority: string
+    studies?: {
+      id?: string
+      modality?: string | null
+      study_description?: string | null
+      patients?: {
+        full_name?: string | null
+        mrn?: string | null
+      } | null
+    } | null
+  }
+
+  const [items, setItems] = useState<WorklistItem[]>([])
   const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -39,9 +53,11 @@ export default function WorklistPage() {
         event: '*', schema: 'public', table: 'worklist_items',
         filter: `assigned_to=eq.${userId}`,
       }, payload => {
-        if (payload.eventType === 'INSERT') setItems(p => [payload.new as any, ...p])
-        if (payload.eventType === 'UPDATE') setItems(p => p.map(i => i.id === (payload.new as any).id ? payload.new : i))
-        if (payload.eventType === 'DELETE') setItems(p => p.filter(i => i.id !== (payload.old as any).id))
+        const newItem = payload.new as WorklistItem
+        const oldItem = payload.old as WorklistItem
+        if (payload.eventType === 'INSERT') setItems(p => [newItem, ...p])
+        if (payload.eventType === 'UPDATE') setItems(p => p.map(i => i.id === newItem.id ? newItem : i))
+        if (payload.eventType === 'DELETE') setItems(p => p.filter(i => i.id !== oldItem.id))
       })
       .subscribe()
 

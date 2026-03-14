@@ -13,18 +13,27 @@ export async function initCornerstoneOnce(): Promise<void> {
       console.log('CS Step 2: import tools')
       const csTools = await import('@cornerstonejs/tools')
 
-      console.log('CS Step 3: import dicom-parser')
-      const dicomParserModule = await import('dicom-parser')
-      const dicomParser = dicomParserModule.default ?? dicomParserModule
-
       console.log('CS Step 4: import dicom image loader')
-      const loaderModule = await import('@cornerstonejs/dicom-image-loader')
+      type LoaderModule = {
+        wadouri?: { loadImage?: unknown }
+        wadors?: { loadImage?: unknown }
+        init?: (opts: unknown) => Promise<void> | void
+        external?: unknown
+        default?: {
+          wadouri?: { loadImage?: unknown }
+          wadors?: { loadImage?: unknown }
+          init?: (opts: unknown) => Promise<void> | void
+          external?: unknown
+        }
+        [key: string]: unknown
+      }
+      const loaderModule = await import('@cornerstonejs/dicom-image-loader') as LoaderModule
       
       console.log('CS Step 5: log all exports of loader module:')
       console.log('loaderModule keys:', Object.keys(loaderModule))
       console.log('loaderModule.default:', loaderModule.default)
-      console.log('loaderModule.external:', (loaderModule as any).external)
-      console.log('loaderModule.default?.external:', (loaderModule as any).default?.external)
+      console.log('loaderModule.external:', loaderModule.external)
+      console.log('loaderModule.default?.external:', loaderModule.default?.external)
 
       console.log('CS Step 6: init core first')
       await cs.init()
@@ -34,28 +43,35 @@ export async function initCornerstoneOnce(): Promise<void> {
 
       console.log('CS Step 8: register image loaders using cs.imageLoader')
       console.log('cs.imageLoader:', cs.imageLoader)
-      console.log('loaderModule.wadouri:', (loaderModule as any).wadouri)
-      console.log('loaderModule.default?.wadouri:', (loaderModule as any).default?.wadouri)
+      console.log('loaderModule.wadouri:', loaderModule.wadouri)
+      console.log('loaderModule.default?.wadouri:', loaderModule.default?.wadouri)
 
-      const loader = (loaderModule as any)
+      const loader = loaderModule
       const wadouri = loader.wadouri ?? loader.default?.wadouri
       const wadors = loader.wadors ?? loader.default?.wadors
 
-      if (wadouri?.loadImage) {
-        cs.imageLoader.registerImageLoader('wadouri', wadouri.loadImage)
+      if (typeof wadouri?.loadImage === 'function') {
+        const registerImageLoader = cs.imageLoader.registerImageLoader as unknown as (
+          scheme: string,
+          loader: unknown
+        ) => void
+        registerImageLoader('wadouri', wadouri.loadImage)
         console.log('wadouri loader registered ✓')
       } else {
         console.error('wadouri.loadImage not found in module')
       }
 
-      if (wadors?.loadImage) {
-        cs.imageLoader.registerImageLoader('wadors', wadors.loadImage)
+      if (typeof wadors?.loadImage === 'function') {
+        const registerImageLoader = cs.imageLoader.registerImageLoader as unknown as (
+          scheme: string,
+          loader: unknown
+        ) => void
+        registerImageLoader('wadors', wadors.loadImage)
         console.log('wadors loader registered ✓')
       }
 
       console.log('CS Step 9: init web worker loader (if available)')
-      const loaderModuleAny = loaderModule as any
-      const loaderInit = loaderModuleAny.init ?? loaderModuleAny.default?.init
+      const loaderInit = loaderModule.init ?? loaderModule.default?.init
       if (loaderInit) {
         await loaderInit({
           maxWebWorkers: 1,

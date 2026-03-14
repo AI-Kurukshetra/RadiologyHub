@@ -23,43 +23,73 @@ export default function ReportEditor({ studyId, patientName, modality, bodyPart 
   const supabase = createClient()
   const { canSign } = useRole()
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const [status, setStatus] = useState<'draft' | 'preliminary' | 'final'>('draft')
+  type ReportStatus = 'draft' | 'preliminary' | 'final'
+  type ReportState = {
+    clinical_history: string
+    technique: string
+    findings: string
+    impression: string
+    recommendation: string
+    critical_finding: boolean
+  }
+  type ReportRow = ReportState & { status?: ReportStatus | null; critical_finding?: boolean | null }
+
+  const [status, setStatus] = useState<ReportStatus>('draft')
   const [saving, setSaving] = useState(false)
   const [signingOff, setSigningOff] = useState(false)
-  const [report, setReport] = useState({
+  const [report, setReport] = useState<ReportState>({
     clinical_history: '', technique: '',
     findings: '', impression: '', recommendation: '',
     critical_finding: false,
   })
+  type ReportUpsert = ReportState & {
+    study_id: string
+    radiologist_id: string
+    status: ReportStatus
+    updated_at: string
+    signed_at?: string
+    signed_by?: string
+  }
+  const reportsTable = supabase.from('reports') as unknown as {
+    upsert: (values: ReportUpsert, options: { onConflict: string }) => Promise<{ error?: { message?: string } | null }>
+  }
+  const studiesTable = supabase.from('studies') as unknown as {
+    update: (values: { status: string }) => {
+      eq: (column: string, value: string) => Promise<unknown>
+    }
+  }
 
   // Load existing report
   useEffect(() => {
     supabase.from('reports').select('*').eq('study_id', studyId).maybeSingle()
       .then(({ data }) => {
-        if (data) {
+        const row = data as ReportRow | null
+        if (row) {
           setReport({
-            clinical_history: data.clinical_history ?? '',
-            technique: data.technique ?? '',
-            findings: data.findings ?? '',
-            impression: data.impression ?? '',
-            recommendation: data.recommendation ?? '',
-            critical_finding: data.critical_finding ?? false,
+            clinical_history: row.clinical_history ?? '',
+            technique: row.technique ?? '',
+            findings: row.findings ?? '',
+            impression: row.impression ?? '',
+            recommendation: row.recommendation ?? '',
+            critical_finding: row.critical_finding ?? false,
           })
-          setStatus(data.status as any)
+          setStatus((row.status ?? 'draft') as ReportStatus)
         }
       })
   }, [studyId])
 
   // Auto-save with debounce
-  function handleChange(key: string, value: string | boolean) {
-    const next = { ...report, [key]: value }
+  type TextFieldKey = typeof FIELDS[number]['key']
+  type ReportFieldKey = TextFieldKey | 'critical_finding'
+  function handleChange(key: ReportFieldKey, value: string | boolean) {
+    const next = { ...report, [key]: value } as ReportState
     setReport(next)
     if (status === 'final') return
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       setSaving(true)
       const { data: { user } } = await supabase.auth.getUser()
-      await supabase.from('reports').upsert(
+      await reportsTable.upsert(
         { study_id: studyId, ...next, radiologist_id: user!.id,
           status: 'draft', updated_at: new Date().toISOString() },
         { onConflict: 'study_id' }
@@ -71,13 +101,13 @@ export default function ReportEditor({ studyId, patientName, modality, bodyPart 
   async function handleSign() {
     setSigningOff(true)
     const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('reports').upsert(
+    await reportsTable.upsert(
       { study_id: studyId, ...report, radiologist_id: user!.id,
         status: 'final', signed_at: new Date().toISOString(), signed_by: user!.id,
         updated_at: new Date().toISOString() },
       { onConflict: 'study_id' }
     )
-    await supabase.from('studies').update({ status: 'reported' }).eq('id', studyId)
+    await studiesTable.update({ status: 'reported' }).eq('id', studyId)
     await fetch('/api/hl7/send', {
       method: 'POST',
       body: JSON.stringify({ studyId }),
@@ -108,7 +138,7 @@ export default function ReportEditor({ studyId, patientName, modality, bodyPart 
           <textarea rows={rows}
             disabled={status === 'final'}
             className="w-full border rounded-lg px-3 py-2 text-sm font-mono resize-none disabled:bg-slate-50 disabled:text-slate-500"
-            value={(report as any)[key]}
+            value={report[key as TextFieldKey]}
             onChange={e => handleChange(key, e.target.value)}
           />
         </div>

@@ -4,6 +4,14 @@ import ReportEditor from '@/components/reports/ReportEditor'
 
 export default async function StudyReportPage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
+  type StudyReport = {
+    id: string
+    modality?: string | null
+    body_part?: string | null
+    study_date?: string | null
+    referring_physician?: string | null
+    patients?: { full_name?: string | null; mrn?: string | null } | null
+  }
 
   const { data: study } = await supabase
     .from('studies')
@@ -22,7 +30,7 @@ export default async function StudyReportPage({ params }: { params: { id: string
     .single()
 
   if (!study) notFound()
-  const s = study as any
+  const s = study as StudyReport
 
   return (
     <div className="grid gap-6 p-6 lg:grid-cols-[320px_1fr]">

@@ -48,9 +48,25 @@ export type StudyTableRow = {
 type StudyFilters = { status: string; modality: string; search: string }
 
 type StudyTableProps = {
-  studies: any[]
+  studies: StudyRecord[]
   filters?: StudyFilters
   onFilterChange?: React.Dispatch<React.SetStateAction<StudyFilters>>
+}
+
+type StudyRecord = {
+  id: string
+  patientName?: string | null
+  mrn?: string | null
+  modality?: string | null
+  date?: string | null
+  description?: string | null
+  study_description?: string | null
+  study_date?: string | null
+  status?: StudyStatus | string | null
+  priority?: StudyPriority | string | null
+  assignedTo?: string | null
+  patients?: { full_name?: string | null; mrn?: string | null } | null
+  users?: { full_name?: string | null } | null
 }
 
 const priorityClasses: Record<string, string> = {
@@ -92,7 +108,7 @@ export function StudyTable({ studies, filters: controlledFilters, onFilterChange
 
   const normalizedStudies = React.useMemo<StudyTableRow[]>(
     () =>
-      studies.map((study: any) => ({
+      studies.map((study: StudyRecord) => ({
         id: study.id,
         patientName: study.patientName ?? study.patients?.full_name ?? "Unknown",
         mrn: study.mrn ?? study.patients?.mrn ?? "-",

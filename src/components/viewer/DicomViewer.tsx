@@ -6,10 +6,51 @@ interface Props {
   studyId: string
 }
 
+type Viewport = {
+  setStack: (ids: string[], index: number) => Promise<void> | void
+  render: () => void
+  setProperties: (props: { voiRange?: { lower: number; upper: number }; invert?: boolean }) => void
+  resetCamera: () => void
+  resetProperties: () => void
+  getProperties: () => { invert?: boolean }
+}
+
+type RenderingEngine = {
+  enableElement: (args: unknown) => void
+  getViewport: (id: string) => unknown
+  destroy: () => void
+}
+
+type ToolGroup = {
+  addTool: (name: string) => void
+  addViewport: (viewportId: string, engineId: string) => void
+  setToolActive: (name: string, opts?: { bindings?: { mouseButton: number }[] }) => void
+  setToolPassive: (name: string) => void
+  getToolInstance: (name: string) => unknown
+  getToolInstances: () => unknown
+}
+
+type ToolsModule = {
+  ToolGroupManager: {
+    getToolGroup: (id: string) => ToolGroup | null
+    createToolGroup: (id: string) => ToolGroup
+    destroyToolGroup: (id: string) => void
+  }
+  addTool: (tool: unknown) => void
+  WindowLevelTool: { toolName: string }
+  ZoomTool: { toolName: string }
+  PanTool: { toolName: string }
+  LengthTool: { toolName: string }
+  AngleTool: { toolName: string }
+  ProbeTool: { toolName: string }
+  StackScrollTool: { toolName: string }
+}
+
 export default function DicomViewer({ imageIds, studyId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const engineRef = useRef<any>(null)
-  const toolGroupRef = useRef<any>(null)
+  const engineRef = useRef<RenderingEngine | null>(null)
+  const toolGroupRef = useRef<ToolGroup | null>(null)
+  const toolsModuleRef = useRef<ToolsModule | null>(null)
   const engineIdRef = useRef<string>(`engine-${studyId}-${Date.now()}`)
   const toolGroupIdRef = useRef<string>(`tg-${studyId}-${Date.now()}`)
   const [activeTool, setActiveTool] = useState('WindowLevel')
@@ -37,8 +78,12 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
         await initCornerstoneOnce()
         if (cancelled) return
 
-        const cs = await import('@cornerstonejs/core')
-        const csTools = await import('@cornerstonejs/tools')
+        const cs = (await import('@cornerstonejs/core')) as unknown as {
+          RenderingEngine: new (id?: string) => RenderingEngine
+          Enums: { ViewportType: { STACK: unknown } }
+        }
+        const csTools = await import('@cornerstonejs/tools') as ToolsModule
+        toolsModuleRef.current = csTools
         if (cancelled) return
 
         const engineId = engineIdRef.current
@@ -59,7 +104,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
         })
 
         // Set stack
-        const viewport = engine.getViewport('main') as any
+        const viewport = engine.getViewport('main') as Viewport
         await viewport.setStack(imageIds, 0)
         viewport.render()
 
@@ -96,7 +141,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
           try {
             toolGroup.addTool(name)
             console.log('Added tool:', name)
-          } catch (err) {
+          } catch {
             console.log('Tool already added:', name)
           }
         })
@@ -133,9 +178,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
         toolGroupRef.current = toolGroup
         console.log('Tool group setup complete')
 
-        console.log('Tool group tools:', 
-          toolGroup.getToolInstances()
-        )
+        console.log('Tool group tools:', toolGroup.getToolInstances())
 
       } catch (err) {
         console.error('DicomViewer setup failed:', err)
@@ -147,8 +190,9 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
     return () => {
       cancelled = true
       try {
-        const { ToolGroupManager } = require('@cornerstonejs/tools')
-        ToolGroupManager.destroyToolGroup(toolGroupIdRef.current)
+        toolsModuleRef.current?.ToolGroupManager?.destroyToolGroup(
+          toolGroupIdRef.current
+        )
       } catch {}
       try { engineRef.current?.destroy() } catch {}
     }
@@ -156,7 +200,8 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
 
   // Switch active tool on left mouse button
   function switchTool(toolName: string) {
-    if (!toolGroupRef.current) {
+    const toolGroup = toolGroupRef.current
+    if (!toolGroup) {
       console.error('No tool group available')
       return
     }
@@ -174,15 +219,15 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
       
       currentTools.forEach(t => {
         try {
-          const toolInstance = toolGroupRef.current.getToolInstance(t)
+          const toolInstance = toolGroup.getToolInstance(t)
           if (toolInstance) {
-            toolGroupRef.current.setToolPassive(t)
+            toolGroup.setToolPassive(t)
           }
         } catch {}
       })
 
       // Step 2: Set the new tool as active on left click
-      toolGroupRef.current.setToolActive(toolName, {
+      toolGroup.setToolActive(toolName, {
         bindings: [
           { mouseButton: 1 } // Left mouse button
         ],
@@ -190,7 +235,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
 
       // Step 3: Always keep these on secondary bindings
       try {
-        toolGroupRef.current.setToolActive('Zoom', {
+        toolGroup.setToolActive('Zoom', {
           bindings: [
             { mouseButton: toolName === 'Zoom' ? 1 : 2 }
           ],
@@ -198,7 +243,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
       } catch {}
 
       try {
-        toolGroupRef.current.setToolActive('Pan', {
+        toolGroup.setToolActive('Pan', {
           bindings: [
             { mouseButton: toolName === 'Pan' ? 1 : 4 }
           ],
@@ -207,7 +252,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
 
       // Step 4: Always keep scroll wheel active
       try {
-        toolGroupRef.current.setToolActive(
+        toolGroup.setToolActive(
           'StackScrollMouseWheel', 
           { bindings: [] }
         )
@@ -224,7 +269,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
     const preset = PRESETS[presetName]
     if (!preset || !engineRef.current) return
     try {
-      const viewport = engineRef.current.getViewport('main')
+      const viewport = engineRef.current.getViewport('main') as Viewport
       viewport.setProperties({
         voiRange: {
           lower: preset.wl - preset.ww / 2,
@@ -243,7 +288,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
   function handleReset() {
     if (!engineRef.current) return
     try {
-      const viewport = engineRef.current.getViewport('main')
+      const viewport = engineRef.current.getViewport('main') as Viewport
       viewport.resetCamera()
       viewport.resetProperties()
       viewport.render()
@@ -254,7 +299,7 @@ export default function DicomViewer({ imageIds, studyId }: Props) {
   function handleInvert() {
     if (!engineRef.current) return
     try {
-      const viewport = engineRef.current.getViewport('main')
+      const viewport = engineRef.current.getViewport('main') as Viewport
       const { invert } = viewport.getProperties()
       viewport.setProperties({ invert: !invert })
       viewport.render()

@@ -49,16 +49,17 @@ export default function ViewerPage({
         .eq('study_id', params.id)
         .order('instance_number')
 
-      if (!imgs || imgs.length === 0) {
+      const imageRows = (imgs as { storage_path: string; instance_number: number }[] | null)
+      if (!imageRows || imageRows.length === 0) {
         console.log('No images found for study:', params.id)
         setLoading(false)
         return
       }
 
-      console.log('Found images:', imgs.length)
+      console.log('Found images:', imageRows.length)
 
       const ids = await Promise.all(
-        imgs.map(async img => {
+        imageRows.map(async img => {
           const { data } = await supabase.storage
             .from('dicoms')
             .createSignedUrl(img.storage_path, 3600)

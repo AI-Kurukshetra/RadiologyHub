@@ -324,7 +324,7 @@ export default function LandingPage() {
         </div>
         <div className="testimonial-card animate-in" style={{transitionDelay:'0.1s'}}>
           <p className="testimonial-text">
-            "RadiologyHub transformed our workflow at Apollo. We went from a 4-hour average turnaround to under 45 minutes for routine studies. The worklist prioritisation alone has saved us from missing critical findings. It is the first PACS that our radiologists actually enjoy using."
+            &quot;RadiologyHub transformed our workflow at Apollo. We went from a 4-hour average turnaround to under 45 minutes for routine studies. The worklist prioritisation alone has saved us from missing critical findings. It is the first PACS that our radiologists actually enjoy using.&quot;
           </p>
           <div className="testimonial-author">
             <div className="author-avatar">RM</div>

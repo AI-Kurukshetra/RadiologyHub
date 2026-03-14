@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       .single()
     console.log('Step 5: user institution lookup:', userData, userError?.message)
 
-    const institutionId = (userData as any)?.institution_id
+    const institutionId = (userData as { institution_id?: string | null } | null)?.institution_id
     if (!institutionId) {
       return Response.json({ error: 'No institution_id found for current user' }, { status: 400 })
     }
@@ -99,8 +99,21 @@ export async function POST(req: Request) {
       return Response.json({ error: uploadError.message }, { status: 500 })
     }
 
-    const { data: patient, error: patientError } = await supabase
-      .from('patients')
+    type PatientUpsert = {
+      institution_id: string
+      mrn: string
+      full_name: string
+      gender: string
+    }
+    type PatientRow = { id: string }
+    const patientsTable = supabase.from('patients') as unknown as {
+      upsert: (values: PatientUpsert, options: { onConflict: string }) => {
+        select: () => {
+          single: () => Promise<{ data: PatientRow | null; error: { message?: string } | null }>
+        }
+      }
+    }
+    const { data: patient, error: patientError } = await patientsTable
       .upsert(
         {
           institution_id: institutionId,
@@ -117,8 +130,29 @@ export async function POST(req: Request) {
       throw new Error(patientError?.message || 'Failed to upsert patient')
     }
 
-    const { data: study, error: studyError } = await supabase
-      .from('studies')
+    type StudyUpsert = {
+      institution_id: string
+      patient_id: string
+      assigned_to: string
+      study_instance_uid: string
+      modality: string
+      body_part: string | null
+      study_description: string | null
+      accession_number: string | null
+      referring_physician: string | null
+      status: string
+      priority: string
+      storage_path: string
+    }
+    type StudyRow = { id: string }
+    const studiesTable = supabase.from('studies') as unknown as {
+      upsert: (values: StudyUpsert, options: { onConflict: string }) => {
+        select: () => {
+          single: () => Promise<{ data: StudyRow | null; error: { message?: string } | null }>
+        }
+      }
+    }
+    const { data: study, error: studyError } = await studiesTable
       .upsert(
         {
           institution_id: institutionId,
@@ -143,8 +177,23 @@ export async function POST(req: Request) {
       throw new Error(studyError?.message || 'Failed to upsert study')
     }
 
-    const { data: seriesRow, error: seriesError } = await supabase
-      .from('series')
+    type SeriesUpsert = {
+      study_id: string
+      series_instance_uid: string
+      series_number: number
+      series_description: string
+      modality: string
+      storage_path: string
+    }
+    type SeriesRow = { id: string }
+    const seriesTable = supabase.from('series') as unknown as {
+      upsert: (values: SeriesUpsert, options: { onConflict: string }) => {
+        select: () => {
+          single: () => Promise<{ data: SeriesRow | null; error: { message?: string } | null }>
+        }
+      }
+    }
+    const { data: seriesRow, error: seriesError } = await seriesTable
       .upsert(
         {
           study_id: study.id,
@@ -163,8 +212,17 @@ export async function POST(req: Request) {
       throw new Error(seriesError?.message || 'Failed to upsert series')
     }
 
-    const { error: imageError } = await supabase
-      .from('images')
+    type ImageUpsert = {
+      series_id: string
+      study_id: string
+      sop_instance_uid: string
+      instance_number: number
+      storage_path: string
+    }
+    const imagesTable = supabase.from('images') as unknown as {
+      upsert: (values: ImageUpsert, options: { onConflict: string }) => Promise<{ error: { message?: string } | null }>
+    }
+    const { error: imageError } = await imagesTable
       .upsert(
         {
           series_id: seriesRow.id,

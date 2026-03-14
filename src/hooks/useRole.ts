@@ -11,8 +11,13 @@ export function useRole() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) { setLoading(false); return }
+      type RoleRow = { role?: Role }
       supabase.from('users').select('role').eq('id', user.id).single()
-        .then(({ data }) => { setRole((data?.role ?? null) as Role); setLoading(false) })
+        .then(({ data }) => {
+          const row = data as RoleRow | null
+          setRole(row?.role ?? null)
+          setLoading(false)
+        })
     })
   }, [])
 
